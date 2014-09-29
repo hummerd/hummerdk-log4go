@@ -3,9 +3,10 @@
 package log4go
 
 import (
+	"fmt"
 	"io"
 	"os"
-	"fmt"
+	"sync"
 )
 
 var stdout io.Writer = os.Stdout
@@ -14,13 +15,13 @@ var stdout io.Writer = os.Stdout
 type ConsoleLogWriter chan *LogRecord
 
 // This creates a new ConsoleLogWriter
-func NewConsoleLogWriter() ConsoleLogWriter {
+func NewConsoleLogWriter(syncClose *sync.WaitGroup) ConsoleLogWriter {
 	records := make(ConsoleLogWriter, LogBufferLength)
-	go records.run(stdout)
+	go records.run(stdout, syncClose)
 	return records
 }
 
-func (w ConsoleLogWriter) run(out io.Writer) {
+func (w ConsoleLogWriter) run(out io.Writer, syncClose *sync.WaitGroup) {
 	var timestr string
 	var timestrAt int64
 
@@ -30,6 +31,8 @@ func (w ConsoleLogWriter) run(out io.Writer) {
 		}
 		fmt.Fprint(out, "[", timestr, "] [", levelStrings[rec.Level], "] ", rec.Message, "\n")
 	}
+
+	syncClose.Done()
 }
 
 // This is the ConsoleLogWriter's output method.  This will block if the output

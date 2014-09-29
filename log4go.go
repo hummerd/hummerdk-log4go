@@ -47,11 +47,12 @@ package log4go
 
 import (
 	"errors"
-	"os"
 	"fmt"
-	"time"
-	"strings"
+	"os"
 	"runtime"
+	"strings"
+	"sync"
+	"time"
 )
 
 // Version information
@@ -130,33 +131,33 @@ type Filter struct {
 
 // A Logger represents a collection of Filters through which log messages are
 // written.
-type Logger map[string]*Filter
+type Logger struct {
+	filters   map[string]*Filter
+	closeSync *sync.WaitGroup
+}
 
 // Create a new logger.
-//
-// DEPRECATED: Use make(Logger) instead.
-func NewLogger() Logger {
-	os.Stderr.WriteString("warning: use of deprecated NewLogger\n")
-	return make(Logger)
+func NewLogger() *Logger {
+	return &Logger{filters: make(map[string]*Filter), closeSync: new(sync.WaitGroup)}
 }
 
 // Create a new logger with a "stdout" filter configured to send log messages at
 // or above lvl to standard output.
 //
 // DEPRECATED: use NewDefaultLogger instead.
-func NewConsoleLogger(lvl level) Logger {
+func NewConsoleLogger(lvl level) *Logger {
 	os.Stderr.WriteString("warning: use of deprecated NewConsoleLogger\n")
-	return Logger{
-		"stdout": &Filter{lvl, NewConsoleLogWriter()},
-	}
+	log := NewLogger()
+	log.AddFilter("stdout", lvl, NewConsoleLogWriter(log.closeSync))
+	return log
 }
 
 // Create a new logger with a "stdout" filter configured to send log messages at
 // or above lvl to standard output.
-func NewDefaultLogger(lvl level) Logger {
-	return Logger{
-		"stdout": &Filter{lvl, NewConsoleLogWriter()},
-	}
+func NewDefaultLogger(lvl level) *Logger {
+	log := NewLogger()
+	log.AddFilter("stdout", lvl, NewConsoleLogWriter(log.closeSync))
+	return log
 }
 
 // Closes all log writers in preparation for exiting the program or a
@@ -165,17 +166,19 @@ func NewDefaultLogger(lvl level) Logger {
 // all filters (and thus all LogWriters) from the logger.
 func (log Logger) Close() {
 	// Close all open loggers
-	for name, filt := range log {
+	for name, filt := range log.filters {
 		filt.Close()
-		delete(log, name)
+		delete(log.filters, name)
 	}
+	log.closeSync.Wait()
 }
 
 // Add a new LogWriter to the Logger which will only log messages at lvl or
 // higher.  This function should not be called from multiple goroutines.
 // Returns the logger for chaining.
 func (log Logger) AddFilter(name string, lvl level, writer LogWriter) Logger {
-	log[name] = &Filter{lvl, writer}
+	log.filters[name] = &Filter{lvl, writer}
+	log.closeSync.Add(1)
 	return log
 }
 
@@ -185,7 +188,7 @@ func (log Logger) intLogf(lvl level, format string, args ...interface{}) {
 	skip := true
 
 	// Determine if any logging will be done
-	for _, filt := range log {
+	for _, filt := range log.filters {
 		if lvl >= filt.Level {
 			skip = false
 			break
@@ -216,7 +219,7 @@ func (log Logger) intLogf(lvl level, format string, args ...interface{}) {
 	}
 
 	// Dispatch the logs
-	for _, filt := range log {
+	for _, filt := range log.filters {
 		if lvl < filt.Level {
 			continue
 		}
@@ -229,7 +232,7 @@ func (log Logger) intLogc(lvl level, closure func() string) {
 	skip := true
 
 	// Determine if any logging will be done
-	for _, filt := range log {
+	for _, filt := range log.filters {
 		if lvl >= filt.Level {
 			skip = false
 			break
@@ -255,7 +258,7 @@ func (log Logger) intLogc(lvl level, closure func() string) {
 	}
 
 	// Dispatch the logs
-	for _, filt := range log {
+	for _, filt := range log.filters {
 		if lvl < filt.Level {
 			continue
 		}
@@ -268,7 +271,7 @@ func (log Logger) Log(lvl level, source, message string) {
 	skip := true
 
 	// Determine if any logging will be done
-	for _, filt := range log {
+	for _, filt := range log.filters {
 		if lvl >= filt.Level {
 			skip = false
 			break
@@ -287,7 +290,7 @@ func (log Logger) Log(lvl level, source, message string) {
 	}
 
 	// Dispatch the logs
-	for _, filt := range log {
+	for _, filt := range log.filters {
 		if lvl < filt.Level {
 			continue
 		}

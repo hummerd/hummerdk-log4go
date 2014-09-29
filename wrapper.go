@@ -4,13 +4,13 @@ package log4go
 
 import (
 	"errors"
-	"os"
 	"fmt"
+	"os"
 	"strings"
 )
 
 var (
-	Global Logger
+	Global *Logger
 )
 
 func init() {

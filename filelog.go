@@ -3,8 +3,9 @@
 package log4go
 
 import (
-	"os"
 	"fmt"
+	"os"
+	"sync"
 	"time"
 )
 
@@ -57,7 +58,7 @@ func (w *FileLogWriter) Close() {
 //
 // The standard log-line format is:
 //   [%D %T] [%L] (%S) %M
-func NewFileLogWriter(fname string, rotate bool) *FileLogWriter {
+func NewFileLogWriter(fname string, rotate bool, closeSync *sync.WaitGroup) *FileLogWriter {
 	w := &FileLogWriter{
 		rec:      make(chan *LogRecord, LogBufferLength),
 		rot:      make(chan bool),
@@ -77,6 +78,7 @@ func NewFileLogWriter(fname string, rotate bool) *FileLogWriter {
 			if w.file != nil {
 				fmt.Fprint(w.file, FormatLogRecord(w.trailer, &LogRecord{Created: time.Now()}))
 				w.file.Close()
+				closeSync.Done()
 			}
 		}()
 
@@ -229,8 +231,8 @@ func (w *FileLogWriter) SetRotate(rotate bool) *FileLogWriter {
 
 // NewXMLLogWriter is a utility method for creating a FileLogWriter set up to
 // output XML record log messages instead of line-based ones.
-func NewXMLLogWriter(fname string, rotate bool) *FileLogWriter {
-	return NewFileLogWriter(fname, rotate).SetFormat(
+func NewXMLLogWriter(fname string, rotate bool, syncClose *sync.WaitGroup) *FileLogWriter {
+	return NewFileLogWriter(fname, rotate, syncClose).SetFormat(
 		`	<record level="%L">
 		<timestamp>%D %T</timestamp>
 		<source>%S</source>

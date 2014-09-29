@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 )
 
 // This log writer sends output to a socket
@@ -21,7 +22,7 @@ func (w SocketLogWriter) Close() {
 	close(w)
 }
 
-func NewSocketLogWriter(proto, hostport string) SocketLogWriter {
+func NewSocketLogWriter(proto, hostport string, syncClose *sync.WaitGroup) SocketLogWriter {
 	sock, err := net.Dial(proto, hostport)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "NewSocketLogWriter(%q): %s\n", hostport, err)
@@ -35,6 +36,7 @@ func NewSocketLogWriter(proto, hostport string) SocketLogWriter {
 			if sock != nil && proto == "tcp" {
 				sock.Close()
 			}
+			syncClose.Done()
 		}()
 
 		for rec := range w {
