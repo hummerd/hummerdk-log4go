@@ -182,6 +182,13 @@ func (log Logger) AddFilter(name string, lvl level, writer LogWriter) Logger {
 	return log
 }
 
+func (log Logger) RemoveFilter(name string) {
+	if filt := log.filters[name]; filt != nil {
+		filt.Close()
+		delete(log.filters, name)
+	}
+}
+
 /******* Logging *******/
 // Send a formatted log message internally
 func (log Logger) intLogf(lvl level, format string, args ...interface{}) {
