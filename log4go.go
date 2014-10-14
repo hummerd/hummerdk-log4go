@@ -115,6 +115,11 @@ type LogWriter interface {
 	// This will be called to log a LogRecord message.
 	LogWrite(rec *LogRecord)
 
+	// Set sync primitive
+	// Writer must call closeSync.Done() agter it recived close call
+	// and after it finished with writing all of recieved mesages
+	SelCloseSync(closeSync *sync.WaitGroup)
+
 	// This should clean up anything lingering about the LogWriter, as it is called before
 	// the LogWriter is removed.  LogWrite should not be called after Close.
 	Close()
@@ -148,7 +153,7 @@ func NewLogger() *Logger {
 func NewConsoleLogger(lvl level) *Logger {
 	os.Stderr.WriteString("warning: use of deprecated NewConsoleLogger\n")
 	log := NewLogger()
-	log.AddFilter("stdout", lvl, NewConsoleLogWriter(log.closeSync))
+	log.AddFilter("stdout", lvl, NewConsoleLogWriter())
 	return log
 }
 
@@ -156,7 +161,7 @@ func NewConsoleLogger(lvl level) *Logger {
 // or above lvl to standard output.
 func NewDefaultLogger(lvl level) *Logger {
 	log := NewLogger()
-	log.AddFilter("stdout", lvl, NewConsoleLogWriter(log.closeSync))
+	log.AddFilter("stdout", lvl, NewConsoleLogWriter())
 	return log
 }
 
@@ -179,6 +184,7 @@ func (log Logger) Close() {
 func (log Logger) AddFilter(name string, lvl level, writer LogWriter) Logger {
 	log.filters[name] = &Filter{lvl, writer}
 	log.closeSync.Add(1)
+	writer.SelCloseSync(log.closeSync)
 	return log
 }
 

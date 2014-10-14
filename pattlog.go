@@ -3,9 +3,10 @@
 package log4go
 
 import (
-	"fmt"
 	"bytes"
+	"fmt"
 	"io"
+	"sync"
 )
 
 const (
@@ -94,29 +95,42 @@ func FormatLogRecord(format string, rec *LogRecord) string {
 }
 
 // This is the standard writer that prints to standard output.
-type FormatLogWriter chan *LogRecord
+type FormatLogWriter struct {
+	rec       chan *LogRecord
+	closeSync *sync.WaitGroup
+}
 
 // This creates a new FormatLogWriter
-func NewFormatLogWriter(out io.Writer, format string) FormatLogWriter {
-	records := make(FormatLogWriter, LogBufferLength)
+func NewFormatLogWriter(out io.Writer, format string) *FormatLogWriter {
+	records := &FormatLogWriter{
+		rec: make(chan *LogRecord, LogBufferLength),
+	}
 	go records.run(out, format)
 	return records
 }
 
-func (w FormatLogWriter) run(out io.Writer, format string) {
-	for rec := range w {
+func (w *FormatLogWriter) run(out io.Writer, format string) {
+	for rec := range w.rec {
 		fmt.Fprint(out, FormatLogRecord(format, rec))
+	}
+
+	if w.closeSync != nil {
+		w.closeSync.Done()
 	}
 }
 
 // This is the FormatLogWriter's output method.  This will block if the output
 // buffer is full.
-func (w FormatLogWriter) LogWrite(rec *LogRecord) {
-	w <- rec
+func (w *FormatLogWriter) LogWrite(rec *LogRecord) {
+	w.rec <- rec
+}
+
+func (w *FormatLogWriter) SelCloseSync(closeSync *sync.WaitGroup) {
+	w.closeSync = closeSync
 }
 
 // Close stops the logger from sending messages to standard output.  Attempts to
 // send log messages to this logger after a Close have undefined behavior.
-func (w FormatLogWriter) Close() {
-	close(w)
+func (w *FormatLogWriter) Close() {
+	close(w.rec)
 }

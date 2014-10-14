@@ -11,35 +11,46 @@ import (
 )
 
 // This log writer sends output to a socket
-type SocketLogWriter chan *LogRecord
+type SocketLogWriter struct {
+	rec       chan *LogRecord
+	closeSync *sync.WaitGroup
+}
 
 // This is the SocketLogWriter's output method
 func (w SocketLogWriter) LogWrite(rec *LogRecord) {
-	w <- rec
+	w.rec <- rec
+}
+
+func (w SocketLogWriter) SelCloseSync(closeSync *sync.WaitGroup) {
+	w.closeSync = closeSync
 }
 
 func (w SocketLogWriter) Close() {
-	close(w)
+	close(w.rec)
 }
 
-func NewSocketLogWriter(proto, hostport string, syncClose *sync.WaitGroup) SocketLogWriter {
+func NewSocketLogWriter(proto, hostport string) *SocketLogWriter {
 	sock, err := net.Dial(proto, hostport)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "NewSocketLogWriter(%q): %s\n", hostport, err)
 		return nil
 	}
 
-	w := SocketLogWriter(make(chan *LogRecord, LogBufferLength))
+	w := &SocketLogWriter{
+		rec: make(chan *LogRecord, LogBufferLength),
+	}
 
 	go func() {
 		defer func() {
 			if sock != nil && proto == "tcp" {
 				sock.Close()
 			}
-			syncClose.Done()
+			if w.closeSync != nil {
+				w.closeSync.Done()
+			}
 		}()
 
-		for rec := range w {
+		for rec := range w.rec {
 			// Marshall into JSON
 			js, err := json.Marshal(rec)
 			if err != nil {

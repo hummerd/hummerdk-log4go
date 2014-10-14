@@ -9,7 +9,6 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"sync"
 )
 
 type xmlProperty struct {
@@ -35,6 +34,7 @@ func (log Logger) LoadConfiguration(filename string) {
 
 	// Open the configuration file
 	fd, err := os.Open(filename)
+	defer fd.Close()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "LoadConfiguration: Error: Could not open %q for reading: %s\n", filename, err)
 		os.Exit(1)
@@ -106,13 +106,13 @@ func (log Logger) LoadConfiguration(filename string) {
 
 		switch xmlfilt.Type {
 		case "console":
-			filt, good = xmlToConsoleLogWriter(filename, xmlfilt.Property, enabled, log.closeSync)
+			filt, good = xmlToConsoleLogWriter(filename, xmlfilt.Property, enabled)
 		case "file":
-			filt, good = xmlToFileLogWriter(filename, xmlfilt.Property, enabled, log.closeSync)
+			filt, good = xmlToFileLogWriter(filename, xmlfilt.Property, enabled)
 		case "xml":
-			filt, good = xmlToXMLLogWriter(filename, xmlfilt.Property, enabled, log.closeSync)
+			filt, good = xmlToXMLLogWriter(filename, xmlfilt.Property, enabled)
 		case "socket":
-			filt, good = xmlToSocketLogWriter(filename, xmlfilt.Property, enabled, log.closeSync)
+			filt, good = xmlToSocketLogWriter(filename, xmlfilt.Property, enabled)
 		default:
 			fmt.Fprintf(os.Stderr, "LoadConfiguration: Error: Could not load XML configuration in %s: unknown filter type \"%s\"\n", filename, xmlfilt.Type)
 			os.Exit(1)
@@ -132,7 +132,7 @@ func (log Logger) LoadConfiguration(filename string) {
 	}
 }
 
-func xmlToConsoleLogWriter(filename string, props []xmlProperty, enabled bool, closeSync *sync.WaitGroup) (ConsoleLogWriter, bool) {
+func xmlToConsoleLogWriter(filename string, props []xmlProperty, enabled bool) (*ConsoleLogWriter, bool) {
 	// Parse properties
 	for _, prop := range props {
 		switch prop.Name {
@@ -146,7 +146,7 @@ func xmlToConsoleLogWriter(filename string, props []xmlProperty, enabled bool, c
 		return nil, true
 	}
 
-	return NewConsoleLogWriter(closeSync), true
+	return NewConsoleLogWriter(), true
 }
 
 // Parse a number with K/M/G suffixes based on thousands (1000) or 2^10 (1024)
@@ -168,7 +168,7 @@ func strToNumSuffix(str string, mult int) int {
 	parsed, _ := strconv.Atoi(str)
 	return parsed * num
 }
-func xmlToFileLogWriter(filename string, props []xmlProperty, enabled bool, closeSync *sync.WaitGroup) (*FileLogWriter, bool) {
+func xmlToFileLogWriter(filename string, props []xmlProperty, enabled bool) (*FileLogWriter, bool) {
 	file := ""
 	format := "[%D %T] [%L] (%S) %M"
 	maxlines := 0
@@ -207,7 +207,7 @@ func xmlToFileLogWriter(filename string, props []xmlProperty, enabled bool, clos
 		return nil, true
 	}
 
-	flw := NewFileLogWriter(file, rotate, closeSync)
+	flw := NewFileLogWriter(file, rotate)
 	flw.SetFormat(format)
 	flw.SetRotateLines(maxlines)
 	flw.SetRotateSize(maxsize)
@@ -215,7 +215,7 @@ func xmlToFileLogWriter(filename string, props []xmlProperty, enabled bool, clos
 	return flw, true
 }
 
-func xmlToXMLLogWriter(filename string, props []xmlProperty, enabled bool, syncClose *sync.WaitGroup) (*FileLogWriter, bool) {
+func xmlToXMLLogWriter(filename string, props []xmlProperty, enabled bool) (*FileLogWriter, bool) {
 	file := ""
 	maxrecords := 0
 	maxsize := 0
@@ -251,14 +251,14 @@ func xmlToXMLLogWriter(filename string, props []xmlProperty, enabled bool, syncC
 		return nil, true
 	}
 
-	xlw := NewXMLLogWriter(file, rotate, syncClose)
+	xlw := NewXMLLogWriter(file, rotate)
 	xlw.SetRotateLines(maxrecords)
 	xlw.SetRotateSize(maxsize)
 	xlw.SetRotateDaily(daily)
 	return xlw, true
 }
 
-func xmlToSocketLogWriter(filename string, props []xmlProperty, enabled bool, syncClose *sync.WaitGroup) (SocketLogWriter, bool) {
+func xmlToSocketLogWriter(filename string, props []xmlProperty, enabled bool) (*SocketLogWriter, bool) {
 	endpoint := ""
 	protocol := "udp"
 
@@ -285,5 +285,5 @@ func xmlToSocketLogWriter(filename string, props []xmlProperty, enabled bool, sy
 		return nil, true
 	}
 
-	return NewSocketLogWriter(protocol, endpoint, syncClose), true
+	return NewSocketLogWriter(protocol, endpoint), true
 }
