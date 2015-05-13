@@ -1,7 +1,12 @@
-Please see http://log4go.googlecode.com/
+
+Original project was http://log4go.googlecode.com/.
+
+Added features:
+- Close method waits for all loggers to complete
+- Added configuration for limiting log file size and number of files 
 
 Installation:
-- Run `goinstall log4go.googlecode.com/hg`
+- Run `go get github.com/hummerd/hummerdk-log4go`
 
 Usage:
 - Add the following import:
